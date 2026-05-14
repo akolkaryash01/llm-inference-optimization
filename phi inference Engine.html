@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Phi-2 · LLM Inference Engine</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg:       #080c10;
+    --bg2:      #0e1318;
+    --bg3:      #141b22;
+    --border:   #1e2d3d;
+    --border2:  #253545;
+    --green:    #00ff88;
+    --green2:   #00cc6a;
+    --blue:     #38bdf8;
+    --yellow:   #fbbf24;
+    --red:      #f87171;
+    --muted:    #4a6070;
+    --text:     #c9d8e8;
+    --text2:    #7a9ab5;
+    --font-mono: 'JetBrains Mono', monospace;
+    --font-display: 'Syne', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(0,255,136,.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,136,.025) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Glow orb */
+  body::after {
+    content: '';
+    position: fixed;
+    width: 600px; height: 600px;
+    top: -200px; left: 50%;
+    transform: translateX(-50%);
+    background: radial-gradient(circle, rgba(0,255,136,.06) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .page { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 0 24px 80px; }
+
+  /* ── HEADER ── */
+  header {
+    padding: 32px 0 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px;
+  }
+  .logo {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .logo-icon {
+    width: 36px; height: 36px;
+    background: var(--green);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .logo-text {
+    font-family: var(--font-display);
+    font-size: 20px; font-weight: 800;
+    color: #fff; letter-spacing: -.02em;
+  }
+  .logo-sub { font-size: 11px; color: var(--text2); margin-top: 1px; }
+  .header-badges { display: flex; gap: 8px; }
+  .badge {
+    padding: 4px 10px; border-radius: 4px;
+    font-size: 11px; font-weight: 500;
+    border: 1px solid;
+  }
+  .badge-green { border-color: var(--green); color: var(--green); background: rgba(0,255,136,.06); }
+  .badge-blue  { border-color: var(--blue);  color: var(--blue);  background: rgba(56,189,248,.06); }
+
+  /* ── NAV TABS ── */
+  .nav-tabs {
+    display: flex; gap: 0;
+    border-bottom: 1px solid var(--border);
+    margin-top: 28px;
+  }
+  .tab {
+    padding: 10px 20px;
+    font-size: 12px; font-weight: 500;
+    color: var(--text2);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all .15s;
+    background: none; border-top: none; border-left: none; border-right: none;
+    font-family: var(--font-mono);
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--green); border-bottom-color: var(--green); }
+
+  /* ── PANELS ── */
+  .panel { display: none; padding-top: 24px; }
+  .panel.active { display: block; }
+
+  /* ── STATS ROW ── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px; margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .stat-label { font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: .08em; }
+  .stat-value { font-size: 22px; font-weight: 700; margin-top: 4px; font-family: var(--font-display); }
+  .stat-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .green { color: var(--green); }
+  .blue  { color: var(--blue); }
+  .yellow{ color: var(--yellow); }
+
+  /* ── CHAT INTERFACE ── */
+  .chat-layout { display: grid; grid-template-columns: 1fr 280px; gap: 16px; }
+  @media (max-width: 700px) { .chat-layout { grid-template-columns: 1fr; } }
+
+  .chat-main { display: flex; flex-direction: column; gap: 12px; }
+
+  .output-box {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    min-height: 280px;
+    padding: 16px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text);
+    position: relative;
+    overflow-y: auto;
+    max-height: 380px;
+  }
+  .output-placeholder { color: var(--muted); font-style: italic; }
+
+  .output-meta {
+    display: flex; gap: 16px; flex-wrap: wrap;
+    font-size: 11px; color: var(--text2);
+    padding: 8px 0 0;
+  }
+  .output-meta span { display: flex; align-items: center; gap: 4px; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); display: inline-block; }
+  .dot.cached { background: var(--blue); }
+  .dot.miss { background: var(--yellow); }
+
+  .input-row { display: flex; gap: 8px; }
+  textarea {
+    flex: 1;
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text);
+    resize: none;
+    height: 80px;
+    outline: none;
+    transition: border-color .15s;
+  }
+  textarea:focus { border-color: var(--green); }
+  textarea::placeholder { color: var(--muted); }
+
+  .btn {
+    padding: 0 20px;
+    border-radius: 8px;
+    font-family: var(--font-mono);
+    font-size: 12px; font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: all .15s;
+    white-space: nowrap;
+  }
+  .btn-primary {
+    background: var(--green);
+    color: #080c10;
+  }
+  .btn-primary:hover { background: var(--green2); }
+  .btn-primary:disabled { background: var(--muted); cursor: not-allowed; }
+  .btn-outline {
+    background: transparent;
+    color: var(--text2);
+    border: 1px solid var(--border2);
+  }
+  .btn-outline:hover { border-color: var(--text2); color: var(--text); }
+  .btn-danger {
+    background: transparent;
+    color: var(--red);
+    border: 1px solid rgba(248,113,113,.3);
+    font-size: 11px; padding: 6px 12px;
+  }
+  .btn-danger:hover { background: rgba(248,113,113,.1); }
+
+  /* ── SIDEBAR ── */
+  .sidebar { display: flex; flex-direction: column; gap: 12px; }
+
+  .side-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+  }
+  .side-title {
+    font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--text2); margin-bottom: 12px;
+  }
+
+  .slider-row { margin-bottom: 10px; }
+  .slider-label {
+    display: flex; justify-content: space-between;
+    font-size: 11px; color: var(--text2); margin-bottom: 4px;
+  }
+  .slider-val { color: var(--green); }
+  input[type=range] {
+    width: 100%; height: 3px;
+    -webkit-appearance: none;
+    background: var(--border2);
+    border-radius: 2px; outline: none;
+    cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--green);
+    cursor: pointer;
+  }
+
+  .toggle-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .toggle-label { font-size: 12px; color: var(--text2); }
+  .toggle {
+    width: 36px; height: 20px;
+    background: var(--border2);
+    border-radius: 10px;
+    position: relative;
+    cursor: pointer;
+    transition: background .2s;
+    flex-shrink: 0;
+  }
+  .toggle.on { background: var(--green); }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: #fff;
+    top: 3px; left: 3px;
+    transition: transform .2s;
+  }
+  .toggle.on::after { transform: translateX(16px); }
+
+  .example-prompts { display: flex; flex-direction: column; gap: 6px; }
+  .example-btn {
+    padding: 7px 10px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 11px;
+    color: var(--text2);
+    cursor: pointer;
+    text-align: left;
+    font-family: var(--font-mono);
+    transition: all .15s;
+  }
+  .example-btn:hover { border-color: var(--green); color: var(--green); }
+
+  /* ── BENCHMARK PANEL ── */
+  .bench-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+
+  .bench-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .bench-title { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 12px; }
+  .bench-table { width: 100%; border-collapse: collapse; }
+  .bench-table td {
+    padding: 6px 0;
+    font-size: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .bench-table tr:last-child td { border: none; }
+  .bench-table .val { text-align: right; color: var(--green); font-weight: 500; }
+  .bench-table .best-row td { color: var(--yellow); }
+
+  .bar-chart { margin-top: 8px; }
+  .bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .bar-label { font-size: 11px; color: var(--text2); width: 60px; flex-shrink: 0; }
+  .bar-track { flex: 1; height: 16px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; background: var(--green); transition: width .8s ease; display: flex; align-items: center; padding-left: 6px; }
+  .bar-fill.blue { background: var(--blue); }
+  .bar-num { font-size: 10px; color: #080c10; font-weight: 600; }
+
+  /* ── STATS PANEL ── */
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .stat-big-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+  }
+  .stat-big-label { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: .08em; }
+  .stat-big-value { font-size: 32px; font-weight: 800; font-family: var(--font-display); margin: 8px 0 4px; }
+  .stat-big-sub { font-size: 11px; color: var(--muted); }
+
+  /* ── DOCS PANEL ── */
+  .endpoint-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  .endpoint-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .method-badge {
+    padding: 3px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 700;
+  }
+  .method-get  { background: rgba(56,189,248,.15); color: var(--blue); }
+  .method-post { background: rgba(0,255,136,.15);  color: var(--green); }
+  .method-del  { background: rgba(248,113,113,.15); color: var(--red); }
+  .endpoint-path { font-size: 13px; color: var(--text); }
+  .endpoint-desc { font-size: 12px; color: var(--text2); margin-left: auto; }
+  .endpoint-body { padding: 12px 16px; }
+  pre {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    font-size: 11px;
+    color: var(--text2);
+    overflow-x: auto;
+    line-height: 1.6;
+  }
+
+  /* ── LOADING SPINNER ── */
+  .spinner {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 2px solid var(--border2);
+    border-top-color: var(--green);
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── CURSOR BLINK ── */
+  .cursor { display: inline-block; width: 2px; height: 14px; background: var(--green); vertical-align: middle; animation: blink 1s step-end infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ── TOAST ── */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--bg2); border: 1px solid var(--green);
+    color: var(--green); padding: 10px 16px;
+    border-radius: 8px; font-size: 12px;
+    opacity: 0; transform: translateY(10px);
+    transition: all .3s; pointer-events: none; z-index: 999;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  .section-title {
+    font-family: var(--font-display);
+    font-size: 16px; font-weight: 700;
+    color: #fff; margin-bottom: 16px;
+  }
+
+  .run-bench-row { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  .bench-note { font-size: 11px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">⚡</div>
+      <div>
+        <div class="logo-text">Phi-2 Inference Engine</div>
+        <div class="logo-sub">LLM Optimization Project · akolkaryash01</div>
+      </div>
+    </div>
+    <div class="header-badges">
+      <span class="badge badge-green" id="statusBadge">● ONLINE</span>
+      <span class="badge badge-blue">phi-2 · Q4_K_M</span>
+    </div>
+  </header>
+
+  <!-- LIVE STATS BAR -->
+  <div class="stats-row" style="margin-top:20px" id="liveStats">
+    <div class="stat-card">
+      <div class="stat-label">Requests</div>
+      <div class="stat-value green" id="sTotal">0</div>
+      <div class="stat-sub">total served</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Cache Hit Rate</div>
+      <div class="stat-value blue" id="sCacheRate">0%</div>
+      <div class="stat-sub">instant responses</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Avg Speed</div>
+      <div class="stat-value yellow" id="sSpeed">—</div>
+      <div class="stat-sub">tokens / second</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Cached Prompts</div>
+      <div class="stat-value green" id="sCached">0</div>
+      <div class="stat-sub">in memory</div>
+    </div>
+  </div>
+
+  <!-- TABS -->
+  <div class="nav-tabs">
+    <button class="tab active" onclick="showTab('chat',this)">💬 Chat</button>
+    <button class="tab" onclick="showTab('stream',this)">⚡ Stream</button>
+    <button class="tab" onclick="showTab('benchmark',this)">📊 Benchmark</button>
+    <button class="tab" onclick="showTab('stats',this)">📈 Stats</button>
+    <button class="tab" onclick="showTab('docs',this)">📋 API Docs</button>
+  </div>
+
+  <!-- ═══ CHAT PANEL ═══ -->
+  <div class="panel active" id="panel-chat">
+    <div class="chat-layout">
+      <div class="chat-main">
+        <div class="output-box" id="chatOutput">
+          <span class="output-placeholder">// Output will appear here...</span>
+        </div>
+        <div class="output-meta" id="chatMeta" style="display:none">
+          <span><span class="dot" id="cacheDot"></span><span id="cacheLabel"></span></span>
+          <span>⏱ <span id="latencyVal"></span>ms</span>
+          <span>⚡ <span id="tpsVal"></span> tok/sec</span>
+          <span>🔢 <span id="tokVal"></span> tokens</span>
+        </div>
+        <div class="input-row">
+          <textarea id="chatInput" placeholder="Ask Phi-2 anything...&#10;e.g. Explain gradient descent simply"></textarea>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <button class="btn btn-primary" id="sendBtn" onclick="sendChat()">Generate</button>
+            <button class="btn btn-outline" onclick="clearChat()">Clear</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar">
+        <!-- Controls -->
+        <div class="side-card">
+          <div class="side-title">Parameters</div>
+          <div class="slider-row">
+            <div class="slider-label">Max tokens <span class="slider-val" id="tokLabel">100</span></div>
+            <input type="range" min="20" max="300" value="100" id="maxTok"
+              oninput="document.getElementById('tokLabel').textContent=this.value">
+          </div>
+          <div class="slider-row">
+            <div class="slider-label">Temperature <span class="slider-val" id="tempLabel">0.7</span></div>
+            <input type="range" min="0" max="100" value="70" id="tempSlider"
+              oninput="document.getElementById('tempLabel').textContent=(this.value/100).toFixed(1)">
+          </div>
+          <div class="toggle-row" style="margin-top:10px">
+            <span class="toggle-label">Use cache</span>
+            <div class="toggle on" id="cacheToggle" onclick="this.classList.toggle('on')"></div>
+          </div>
+        </div>
+
+        <!-- Examples -->
+        <div class="side-card">
+          <div class="side-title">Example Prompts</div>
+          <div class="example-prompts">
+            <button class="example-btn" onclick="setPrompt(this)">What is gradient descent?</button>
+            <button class="example-btn" onclick="setPrompt(this)">Explain overfitting in ML.</button>
+            <button class="example-btn" onclick="setPrompt(this)">Write a Python bubble sort.</button>
+            <button class="example-btn" onclick="setPrompt(this)">What is a transformer model?</button>
+            <button class="example-btn" onclick="setPrompt(this)">How does backpropagation work?</button>
+            <button class="example-btn" onclick="setPrompt(this)">What is a learning rate?</button>
+          </div>
+        </div>
+
+        <!-- Cache control -->
+        <div class="side-card">
+          <div class="side-title">Cache Control</div>
+          <div style="font-size:11px;color:var(--text2);margin-bottom:10px">
+            Cached prompts return instantly without inference.
+          </div>
+          <button class="btn btn-danger" onclick="clearCache()">🗑 Clear Cache</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ STREAM PANEL ═══ -->
+  <div class="panel" id="panel-stream">
+    <div class="chat-layout">
+      <div class="chat-main">
+        <div class="output-box" id="streamOutput" style="font-size:14px;line-height:1.8">
+          <span class="output-placeholder">// Tokens stream here in real-time...</span>
+        </div>
+        <div class="input-row">
+          <textarea id="streamInput" placeholder="Type a prompt to see token-by-token streaming..."></textarea>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <button class="btn btn-primary" id="streamBtn" onclick="sendStream()">Stream</button>
+            <button class="btn btn-outline" onclick="document.getElementById('streamOutput').innerHTML='<span class=output-placeholder>// Tokens stream here in real-time...</span>'">Clear</button>
+          </div>
+        </div>
+      </div>
+      <div class="sidebar">
+        <div class="side-card">
+          <div class="side-title">What is Streaming?</div>
+          <div style="font-size:12px;color:var(--text2);line-height:1.7">
+            Instead of waiting for all tokens, each token is sent as it's generated — exactly like ChatGPT.<br><br>
+            <span style="color:var(--green)">Tech used:</span><br>
+            Server-Sent Events (SSE) + FastAPI StreamingResponse
+          </div>
+        </div>
+        <div class="side-card">
+          <div class="side-title">Max Tokens</div>
+          <div class="slider-row">
+            <div class="slider-label">Tokens <span class="slider-val" id="streamTokLabel">120</span></div>
+            <input type="range" min="20" max="300" value="120" id="streamMaxTok"
+              oninput="document.getElementById('streamTokLabel').textContent=this.value">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ BENCHMARK PANEL ═══ -->
+  <div class="panel" id="panel-benchmark">
+    <div class="section-title">Thread Performance Benchmark</div>
+    <div class="run-bench-row">
+      <button class="btn btn-primary" id="benchBtn" onclick="runBenchmark()">▶ Run Benchmark</button>
+      <span class="bench-note">Tests 1, 2, 4, 8 threads · takes ~60 seconds</span>
+    </div>
+
+    <div class="bench-grid">
+      <div class="bench-card">
+        <div class="bench-title">Thread Results</div>
+        <div id="benchTable">
+          <table class="bench-table">
+            <tr><td>1 thread</td><td class="val">—</td></tr>
+            <tr><td>2 threads</td><td class="val">—</td></tr>
+            <tr><td>4 threads</td><td class="val">—</td></tr>
+            <tr><td>8 threads</td><td class="val">—</td></tr>
+          </table>
+        </div>
+      </div>
+
+      <div class="bench-card">
+        <div class="bench-title">Visual Comparison</div>
+        <div class="bar-chart" id="benchBars">
+          <div class="bar-row"><div class="bar-label">1 thread</div><div class="bar-track"><div class="bar-fill" style="width:0%"><span class="bar-num"></span></div></div></div>
+          <div class="bar-row"><div class="bar-label">2 threads</div><div class="bar-track"><div class="bar-fill" style="width:0%"><span class="bar-num"></span></div></div></div>
+          <div class="bar-row"><div class="bar-label">4 threads</div><div class="bar-track"><div class="bar-fill" style="width:0%"><span class="bar-num"></span></div></div></div>
+          <div class="bar-row"><div class="bar-label">8 threads</div><div class="bar-track"><div class="bar-fill" style="width:0%"><span class="bar-num"></span></div></div></div>
+        </div>
+      </div>
+
+      <div class="bench-card">
+        <div class="bench-title">Colab GPU Results (from your notebook)</div>
+        <div class="bar-chart">
+          <div class="bar-row"><div class="bar-label">FP16 base</div><div class="bar-track"><div class="bar-fill blue" style="width:60%"><span class="bar-num">14.5</span></div></div></div>
+          <div class="bar-row"><div class="bar-label">4-bit NF4</div><div class="bar-track"><div class="bar-fill blue" style="width:30%"><span class="bar-num">7.3</span></div></div></div>
+          <div class="bar-row"><div class="bar-label">Batched×4</div><div class="bar-track"><div class="bar-fill blue" style="width:52%"><span class="bar-num">12.5</span></div></div></div>
+        </div>
+        <div style="margin-top:10px;font-size:11px;color:var(--text2)">
+          ✅ 67% VRAM reduction: 5.57GB → 1.84GB
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ STATS PANEL ═══ -->
+  <div class="panel" id="panel-stats">
+    <div class="section-title">Live Session Statistics</div>
+    <div class="stats-grid" id="statsGrid">
+      <div class="stat-big-card">
+        <div class="stat-big-label">Total Requests</div>
+        <div class="stat-big-value green" id="bigTotal">0</div>
+        <div class="stat-big-sub">served this session</div>
+      </div>
+      <div class="stat-big-card">
+        <div class="stat-big-label">Cache Hit Rate</div>
+        <div class="stat-big-value blue" id="bigCacheRate">0%</div>
+        <div class="stat-big-sub">instant responses</div>
+      </div>
+      <div class="stat-big-card">
+        <div class="stat-big-label">Cache Hits</div>
+        <div class="stat-big-value yellow" id="bigHits">0</div>
+        <div class="stat-big-sub">saved from recompute</div>
+      </div>
+      <div class="stat-big-card">
+        <div class="stat-big-label">Avg Tokens/sec</div>
+        <div class="stat-big-value green" id="bigTps">—</div>
+        <div class="stat-big-sub">CPU inference speed</div>
+      </div>
+      <div class="stat-big-card">
+        <div class="stat-big-label">Total Tokens</div>
+        <div class="stat-big-value blue" id="bigTokens">0</div>
+        <div class="stat-big-sub">generated this session</div>
+      </div>
+      <div class="stat-big-card">
+        <div class="stat-big-label">Cached Prompts</div>
+        <div class="stat-big-value yellow" id="bigCached">0</div>
+        <div class="stat-big-sub">in memory cache</div>
+      </div>
+    </div>
+    <div style="margin-top:16px">
+      <button class="btn btn-outline" onclick="refreshStats()">↻ Refresh</button>
+    </div>
+  </div>
+
+  <!-- ═══ DOCS PANEL ═══ -->
+  <div class="panel" id="panel-docs">
+    <div class="section-title">API Documentation</div>
+
+    <div class="endpoint-card">
+      <div class="endpoint-header">
+        <span class="method-badge method-post">POST</span>
+        <span class="endpoint-path">/generate</span>
+        <span class="endpoint-desc">Generate text, with optional caching</span>
+      </div>
+      <div class="endpoint-body">
+        <pre>// Request body
+{
+  "prompt": "What is gradient descent?",
+  "max_tokens": 100,
+  "temperature": 0.7,
+  "use_cache": true
+}
+
+// Response
+{
+  "response": "Gradient descent is...",
+  "latency_ms": 8420,
+  "tokens_per_sec": 5.5,
+  "tokens_generated": 47,
+  "cached": false
+}</pre>
+      </div>
+    </div>
+
+    <div class="endpoint-card">
+      <div class="endpoint-header">
+        <span class="method-badge method-post">POST</span>
+        <span class="endpoint-path">/stream</span>
+        <span class="endpoint-desc">Server-Sent Events token streaming</span>
+      </div>
+      <div class="endpoint-body">
+        <pre>// Returns SSE stream
+data: {"token": "Gradient"}
+data: {"token": " descent"}
+data: {"token": " is"}
+...
+data: [DONE]
+
+// Python client
+import requests
+with requests.post("/stream", json={"prompt":"..."}, stream=True) as r:
+    for chunk in r.iter_content():
+        print(chunk.decode(), end="")</pre>
+      </div>
+    </div>
+
+    <div class="endpoint-card">
+      <div class="endpoint-header">
+        <span class="method-badge method-get">GET</span>
+        <span class="endpoint-path">/benchmark</span>
+        <span class="endpoint-desc">Run thread performance benchmark</span>
+      </div>
+      <div class="endpoint-body">
+        <pre>// Response
+{
+  "thread_results": {
+    "1_threads": 2.6,
+    "2_threads": 3.7,
+    "4_threads": 5.4,
+    "8_threads": 5.2
+  },
+  "best": "4_threads",
+  "best_tps": 5.4
+}</pre>
+      </div>
+    </div>
+
+    <div class="endpoint-card">
+      <div class="endpoint-header">
+        <span class="method-badge method-get">GET</span>
+        <span class="endpoint-path">/stats</span>
+        <span class="endpoint-desc">Live session statistics</span>
+      </div>
+      <div class="endpoint-body">
+        <pre>// Response
+{
+  "total_requests": 12,
+  "cache_hits": 4,
+  "cache_hit_rate": "33%",
+  "avg_tokens_per_sec": 5.2,
+  "total_tokens_generated": 840
+}</pre>
+      </div>
+    </div>
+
+    <div class="endpoint-card">
+      <div class="endpoint-header">
+        <span class="method-badge method-del">DELETE</span>
+        <span class="endpoint-path">/cache</span>
+        <span class="endpoint-desc">Clear the prompt cache</span>
+      </div>
+      <div class="endpoint-body">
+        <pre>// Response
+{"message": "Cache cleared"}</pre>
+      </div>
+    </div>
+
+    <div class="endpoint-card">
+      <div class="endpoint-header">
+        <span class="method-badge method-get">GET</span>
+        <span class="endpoint-path">/health</span>
+        <span class="endpoint-desc">Health check</span>
+      </div>
+      <div class="endpoint-body">
+        <pre>{"status": "ok", "model": "phi-2.Q4_K_M.gguf", "device": "cpu"}</pre>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /page -->
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Tab switching ──────────────────────────────────
+function showTab(name, btn) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'stats') refreshStats();
+}
+
+// ── Toast ──────────────────────────────────────────
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ── Set prompt from example ────────────────────────
+function setPrompt(btn) {
+  document.getElementById('chatInput').value = btn.textContent;
+  document.getElementById('chatInput').focus();
+}
+
+// ── Clear chat ─────────────────────────────────────
+function clearChat() {
+  document.getElementById('chatOutput').innerHTML = '<span class="output-placeholder">// Output will appear here...</span>';
+  document.getElementById('chatMeta').style.display = 'none';
+}
+
+// ── GENERATE ──────────────────────────────────────
+async function sendChat() {
+  const prompt = document.getElementById('chatInput').value.trim();
+  if (!prompt) return;
+
+  const btn = document.getElementById('sendBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Generating...';
+
+  const out = document.getElementById('chatOutput');
+  out.innerHTML = '<span class="spinner"></span> Thinking...';
+
+  const maxTok  = parseInt(document.getElementById('maxTok').value);
+  const temp    = parseFloat(document.getElementById('tempLabel').textContent);
+  const useCache = document.getElementById('cacheToggle').classList.contains('on');
+
+  try {
+    const res = await fetch('/generate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({prompt, max_tokens: maxTok, temperature: temp, use_cache: useCache})
+    });
+    const data = await res.json();
+
+    out.textContent = data.response || 'No response.';
+
+    const meta = document.getElementById('chatMeta');
+    meta.style.display = 'flex';
+    document.getElementById('latencyVal').textContent = data.latency_ms;
+    document.getElementById('tpsVal').textContent = data.tokens_per_sec;
+    document.getElementById('tokVal').textContent = data.tokens_generated;
+
+    const dot = document.getElementById('cacheDot');
+    const label = document.getElementById('cacheLabel');
+    if (data.cached) {
+      dot.className = 'dot cached';
+      label.textContent = 'Cache HIT';
+      toast('⚡ Cache hit — instant response!');
+    } else {
+      dot.className = 'dot miss';
+      label.textContent = 'Cache MISS';
+    }
+
+    refreshLiveStats();
+  } catch(e) {
+    out.innerHTML = '<span style="color:var(--red)">Error: ' + e.message + '<br>Make sure app.py is running on port 8000.</span>';
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Generate';
+}
+
+// Enter key to send
+document.getElementById('chatInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+});
+
+// ── STREAM ────────────────────────────────────────
+async function sendStream() {
+  const prompt = document.getElementById('streamInput').value.trim();
+  if (!prompt) return;
+
+  const btn = document.getElementById('streamBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Streaming...';
+
+  const out = document.getElementById('streamOutput');
+  out.innerHTML = '<span class="cursor"></span>';
+
+  const maxTok = parseInt(document.getElementById('streamMaxTok').value);
+
+  try {
+    const res = await fetch('/stream', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({prompt, max_tokens: maxTok})
+    });
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let text = '';
+
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value);
+      const lines = chunk.split('\n');
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+          if (data === '[DONE]') break;
+          try {
+            const obj = JSON.parse(data);
+            text += obj.token;
+            out.innerHTML = text + '<span class="cursor"></span>';
+            out.scrollTop = out.scrollHeight;
+          } catch(e) {}
+        }
+      }
+    }
+    out.innerHTML = text;
+  } catch(e) {
+    out.innerHTML = '<span style="color:var(--red)">Error: ' + e.message + '</span>';
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Stream';
+}
+
+document.getElementById('streamInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendStream(); }
+});
+
+// ── BENCHMARK ─────────────────────────────────────
+async function runBenchmark() {
+  const btn = document.getElementById('benchBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Running (~60s)...';
+
+  document.getElementById('benchTable').innerHTML = '<div style="color:var(--text2);font-size:12px;padding:8px 0">Running benchmark... please wait.</div>';
+
+  try {
+    const res = await fetch('/benchmark');
+    const data = await res.json();
+    const r = data.thread_results;
+    const best = data.best;
+    const vals = [r['1_threads'], r['2_threads'], r['4_threads'], r['8_threads']];
+    const maxVal = Math.max(...vals);
+
+    // Table
+    const labels = ['1 thread','2 threads','4 threads','8 threads'];
+    const keys   = ['1_threads','2_threads','4_threads','8_threads'];
+    let html = '<table class="bench-table">';
+    keys.forEach((k,i) => {
+      const isBest = k === best;
+      html += `<tr class="${isBest?'best-row':''}"><td>${labels[i]}${isBest?' ★':''}</td><td class="val">${r[k]} tok/s</td></tr>`;
+    });
+    html += '</table>';
+    document.getElementById('benchTable').innerHTML = html;
+
+    // Bars
+    const bars = document.querySelectorAll('#benchBars .bar-fill');
+    vals.forEach((v,i) => {
+      const pct = Math.round((v / maxVal) * 100);
+      bars[i].style.width = pct + '%';
+      bars[i].querySelector('.bar-num').textContent = v;
+    });
+
+    toast('✅ Benchmark complete! Best: ' + data.best_tps + ' tok/s at ' + best);
+  } catch(e) {
+    toast('Error: ' + e.message);
+  }
+
+  btn.disabled = false;
+  btn.textContent = '▶ Run Benchmark';
+}
+
+// ── STATS ─────────────────────────────────────────
+async function refreshStats() {
+  try {
+    const res = await fetch('/stats');
+    const d = await res.json();
+    document.getElementById('bigTotal').textContent = d.total_requests;
+    document.getElementById('bigCacheRate').textContent = d.cache_hit_rate;
+    document.getElementById('bigHits').textContent = d.cache_hits;
+    document.getElementById('bigTps').textContent = d.avg_tokens_per_sec;
+    document.getElementById('bigTokens').textContent = d.total_tokens_generated;
+    document.getElementById('bigCached').textContent = d.cached_prompts;
+  } catch(e) {}
+}
+
+async function refreshLiveStats() {
+  try {
+    const res = await fetch('/stats');
+    const d = await res.json();
+    document.getElementById('sTotal').textContent = d.total_requests;
+    document.getElementById('sCacheRate').textContent = d.cache_hit_rate;
+    document.getElementById('sSpeed').textContent = d.avg_tokens_per_sec;
+    document.getElementById('sCached').textContent = d.cached_prompts;
+  } catch(e) {}
+}
+
+// ── CLEAR CACHE ───────────────────────────────────
+async function clearCache() {
+  await fetch('/cache', {method: 'DELETE'});
+  toast('🗑 Cache cleared');
+  refreshLiveStats();
+}
+
+// ── HEALTH CHECK ──────────────────────────────────
+async function checkHealth() {
+  try {
+    const res = await fetch('/health');
+    const d = await res.json();
+    document.getElementById('statusBadge').textContent = d.status === 'ok' ? '● ONLINE' : '● OFFLINE';
+  } catch(e) {
+    document.getElementById('statusBadge').textContent = '● OFFLINE';
+    document.getElementById('statusBadge').style.color = 'var(--red)';
+    document.getElementById('statusBadge').style.borderColor = 'var(--red)';
+  }
+}
+
+checkHealth();
+setInterval(refreshLiveStats, 10000);
+</script>
+</body>
+</html>
